@@ -1,0 +1,99 @@
+{
+  "name": "salud-network-hospital",
+  "version": "1.0.0",
+  "client": {
+    "organization": "Hospital",
+    "connection": {
+      "timeout": {
+        "peer": { "endorser": "300" },
+        "orderer": "300"
+      }
+    }
+  },
+  "organizations": {
+    "Hospital": {
+      "mspid": "HospitalMSP",
+      "peers": ["peer0.hospital.salud.com"],
+      "certificateAuthorities": ["ca-hospital"]
+    },
+    "MinSalud": {
+      "mspid": "MinSaludMSP",
+      "peers": ["peer0.minsalud.salud.com"],
+      "certificateAuthorities": ["ca-minsalud"]
+    }
+  },
+  "peers": {
+    "peer0.hospital.salud.com": {
+      "url": "grpcs://localhost:7051",
+      "tlsCACerts": {
+        "pem": "-----BEGIN CERTIFICATE-----\nMIICXjCCAgWgAwIBAgIUPo/CdKLuPp2S5Mtnj0WyG8id03YwCgYIKoZIzj0EAwIw\ngYsxCzAJBgNVBAYTAlZFMRkwFwYDVQQIExBEaXN0cml0byBDYXBpdGFsMRAwDgYD\nVQQHEwdDYXJhY2FzMR4wHAYDVQQKExVIb3NwaXRhbFVuaXZlcnNpdGFyaW8xDzAN\nBgNVBAsTBkZhYnJpYzEeMBwGA1UEAxMVY2EuaG9zcGl0YWwuc2FsdWQuY29tMB4X\nDTI2MDMwMzEwMjcwMFoXDTQxMDIyNzEwMjcwMFowgYsxCzAJBgNVBAYTAlZFMRkw\nFwYDVQQIExBEaXN0cml0byBDYXBpdGFsMRAwDgYDVQQHEwdDYXJhY2FzMR4wHAYD\nVQQKExVIb3NwaXRhbFVuaXZlcnNpdGFyaW8xDzANBgNVBAsTBkZhYnJpYzEeMBwG\nA1UEAxMVY2EuaG9zcGl0YWwuc2FsdWQuY29tMFkwEwYHKoZIzj0CAQYIKoZIzj0D\nAQcDQgAE27sPHznypm9zh5MOEJHdtJDqP8GPK/2NR5VkPApwKKwhaMjDvWX465+P\ncVP9SbDRV8lXmlnNc8oyRBkiQugP5aNFMEMwDgYDVR0PAQH/BAQDAgEGMBIGA1Ud\nEwEB/wQIMAYBAf8CAQEwHQYDVR0OBBYEFHhzGL/koA7TzMdmkOy5ovBqD3vfMAoG\nCCqGSM49BAMCA0cAMEQCIAGb9kDxu8A2QVNLFDjzJLXpvlbMoIYc0RQxIOfIhtiO\nAiAbYQO+NALzLcaqBsKmmSJleLw6ReMi/Keh0zRHub45Pg==\n-----END CERTIFICATE-----\n"
+      },
+      "grpcOptions": {
+        "ssl-target-name-override": "peer0.hospital.salud.com",
+        "hostnameOverride": "peer0.hospital.salud.com"
+      }
+    },
+    "peer0.minsalud.salud.com": {
+      "url": "grpcs://localhost:9051",
+      "tlsCACerts": {
+        "pem": "-----BEGIN CERTIFICATE-----\nMIICUzCCAfmgAwIBAgIUO/81WAyzWxRYt6gLer5CYe+um6gwCgYIKoZIzj0EAwIw\ngYUxCzAJBgNVBAYTAlZFMRkwFwYDVQQIExBEaXN0cml0byBDYXBpdGFsMRAwDgYD\nVQQHEwdDYXJhY2FzMRgwFgYDVQQKEw9NaW5pc3RlcmlvU2FsdWQxDzANBgNVBAsT\nBkZhYnJpYzEeMBwGA1UEAxMVY2EubWluc2FsdWQuc2FsdWQuY29tMB4XDTI2MDMw\nMzEwMjcwMFoXDTQxMDIyNzEwMjcwMFowgYUxCzAJBgNVBAYTAlZFMRkwFwYDVQQI\nExBEaXN0cml0byBDYXBpdGFsMRAwDgYDVQQHEwdDYXJhY2FzMRgwFgYDVQQKEw9N\naW5pc3RlcmlvU2FsdWQxDzANBgNVBAsTBkZhYnJpYzEeMBwGA1UEAxMVY2EubWlu\nc2FsdWQuc2FsdWQuY29tMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE87/AvIti\npxQ80IkEcy/hZkJO8WXwPxkUlcsfJiDZ8TN3wgsnqGgL4xCeHMnWm1WDh5dq6zmR\nDYPkhgwj0wvnVKNFMEMwDgYDVR0PAQH/BAQDAgEGMBIGA1UdEwEB/wQIMAYBAf8C\nAQEwHQYDVR0OBBYEFIX3PoRx1vfdqwG1jbaMXtSkNnUeMAoGCCqGSM49BAMCA0gA\nMEUCIQCUegeY8Q42gfvRlupzUcU0OMXzz533f+cbP9tMyd3UigIgL5F34wb73wYZ\nKxVFhbKqHMznFRMDctYX6DwJgrhWB40=\n-----END CERTIFICATE-----\n"
+      },
+      "grpcOptions": {
+        "ssl-target-name-override": "peer0.minsalud.salud.com",
+        "hostnameOverride": "peer0.minsalud.salud.com"
+      }
+    }
+  },
+  "certificateAuthorities": {
+    "ca-hospital": {
+      "url": "https://localhost:7054",
+      "caName": "ca-hospital",
+      "tlsCACerts": {
+        "pem": "-----BEGIN CERTIFICATE-----\nMIICXjCCAgWgAwIBAgIUPo/CdKLuPp2S5Mtnj0WyG8id03YwCgYIKoZIzj0EAwIw\ngYsxCzAJBgNVBAYTAlZFMRkwFwYDVQQIExBEaXN0cml0byBDYXBpdGFsMRAwDgYD\nVQQHEwdDYXJhY2FzMR4wHAYDVQQKExVIb3NwaXRhbFVuaXZlcnNpdGFyaW8xDzAN\nBgNVBAsTBkZhYnJpYzEeMBwGA1UEAxMVY2EuaG9zcGl0YWwuc2FsdWQuY29tMB4X\nDTI2MDMwMzEwMjcwMFoXDTQxMDIyNzEwMjcwMFowgYsxCzAJBgNVBAYTAlZFMRkw\nFwYDVQQIExBEaXN0cml0byBDYXBpdGFsMRAwDgYDVQQHEwdDYXJhY2FzMR4wHAYD\nVQQKExVIb3NwaXRhbFVuaXZlcnNpdGFyaW8xDzANBgNVBAsTBkZhYnJpYzEeMBwG\nA1UEAxMVY2EuaG9zcGl0YWwuc2FsdWQuY29tMFkwEwYHKoZIzj0CAQYIKoZIzj0D\nAQcDQgAE27sPHznypm9zh5MOEJHdtJDqP8GPK/2NR5VkPApwKKwhaMjDvWX465+P\ncVP9SbDRV8lXmlnNc8oyRBkiQugP5aNFMEMwDgYDVR0PAQH/BAQDAgEGMBIGA1Ud\nEwEB/wQIMAYBAf8CAQEwHQYDVR0OBBYEFHhzGL/koA7TzMdmkOy5ovBqD3vfMAoG\nCCqGSM49BAMCA0cAMEQCIAGb9kDxu8A2QVNLFDjzJLXpvlbMoIYc0RQxIOfIhtiO\nAiAbYQO+NALzLcaqBsKmmSJleLw6ReMi/Keh0zRHub45Pg==\n-----END CERTIFICATE-----\n"
+      },
+      "httpOptions": {
+        "verify": false
+      }
+    },
+    "ca-minsalud": {
+      "url": "https://localhost:8054",
+      "caName": "ca-minsalud",
+      "tlsCACerts": {
+        "pem": "-----BEGIN CERTIFICATE-----\nMIICUzCCAfmgAwIBAgIUO/81WAyzWxRYt6gLer5CYe+um6gwCgYIKoZIzj0EAwIw\ngYUxCzAJBgNVBAYTAlZFMRkwFwYDVQQIExBEaXN0cml0byBDYXBpdGFsMRAwDgYD\nVQQHEwdDYXJhY2FzMRgwFgYDVQQKEw9NaW5pc3RlcmlvU2FsdWQxDzANBgNVBAsT\nBkZhYnJpYzEeMBwGA1UEAxMVY2EubWluc2FsdWQuc2FsdWQuY29tMB4XDTI2MDMw\nMzEwMjcwMFoXDTQxMDIyNzEwMjcwMFowgYUxCzAJBgNVBAYTAlZFMRkwFwYDVQQI\nExBEaXN0cml0byBDYXBpdGFsMRAwDgYDVQQHEwdDYXJhY2FzMRgwFgYDVQQKEw9N\naW5pc3RlcmlvU2FsdWQxDzANBgNVBAsTBkZhYnJpYzEeMBwGA1UEAxMVY2EubWlu\nc2FsdWQuc2FsdWQuY29tMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE87/AvIti\npxQ80IkEcy/hZkJO8WXwPxkUlcsfJiDZ8TN3wgsnqGgL4xCeHMnWm1WDh5dq6zmR\nDYPkhgwj0wvnVKNFMEMwDgYDVR0PAQH/BAQDAgEGMBIGA1UdEwEB/wQIMAYBAf8C\nAQEwHQYDVR0OBBYEFIX3PoRx1vfdqwG1jbaMXtSkNnUeMAoGCCqGSM49BAMCA0gA\nMEUCIQCUegeY8Q42gfvRlupzUcU0OMXzz533f+cbP9tMyd3UigIgL5F34wb73wYZ\nKxVFhbKqHMznFRMDctYX6DwJgrhWB40=\n-----END CERTIFICATE-----\n"
+      },
+      "httpOptions": {
+        "verify": false
+      }
+    }
+  },
+  "orderers": {
+    "orderer.salud.com": {
+      "url": "grpcs://localhost:7050",
+      "tlsCACerts": {
+        "pem": "-----BEGIN CERTIFICATE-----\nMIICSjCCAfGgAwIBAgIUYFMd1R7CDbeWLL1EWmwfyH4ca18wCgYIKoZIzj0EAwIw\ngYExCzAJBgNVBAYTAlZFMRkwFwYDVQQIExBEaXN0cml0byBDYXBpdGFsMRAwDgYD\nVQQHEwdDYXJhY2FzMRUwEwYDVQQKEwxTYWx1ZE9yZGVyZXIxDzANBgNVBAsTBkZh\nYnJpYzEdMBsGA1UEAxMUY2Eub3JkZXJlci5zYWx1ZC5jb20wHhcNMjYwMzAzMTAy\nNzAwWhcNNDEwMjI3MTAyNzAwWjCBgTELMAkGA1UEBhMCVkUxGTAXBgNVBAgTEERp\nc3RyaXRvIENhcGl0YWwxEDAOBgNVBAcTB0NhcmFjYXMxFTATBgNVBAoTDFNhbHVk\nT3JkZXJlcjEPMA0GA1UECxMGRmFicmljMR0wGwYDVQQDExRjYS5vcmRlcmVyLnNh\nbHVkLmNvbTBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABFk2EzcCo/usZz3uAePH\nwdzHeIjRFdgT1v4NWldmF/54IXGzHVYDgWiZ/Mjg27kMJOuuRdjN11UE6UQwr56M\narujRTBDMA4GA1UdDwEB/wQEAwIBBjASBgNVHRMBAf8ECDAGAQH/AgEBMB0GA1Ud\nDgQWBBRlm4ZXOTXQYraov6U7lGvXLVk9xDAKBggqhkjOPQQDAgNHADBEAiBriMJD\n4RYx2ZsvYjUNJr6iC7Vjl27uYZ/aNwDrStqFCAIgfTF3bUsZ0Us/3ME3LIS4B7W1\nlJ8+K2td8z4C+o2GyeU=\n-----END CERTIFICATE-----\n"
+      },
+      "grpcOptions": {
+        "ssl-target-name-override": "orderer.salud.com"
+      }
+    }
+  },
+  "channels": {
+    "canal-historiales": {
+      "orderers": ["orderer.salud.com"],
+      "peers": {
+        "peer0.hospital.salud.com": {
+          "endorsingPeer": true,
+          "chaincodeQuery": true,
+          "ledgerQuery": true,
+          "eventSource": true
+        },
+        "peer0.minsalud.salud.com": {
+          "endorsingPeer": true,
+          "chaincodeQuery": true,
+          "ledgerQuery": true,
+          "eventSource": true
+        }
+      }
+    }
+  }
+}

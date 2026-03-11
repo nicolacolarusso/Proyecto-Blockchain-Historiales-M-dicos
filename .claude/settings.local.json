@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install)",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(chmod +x /Users/nicolagabrielecolarusso/Desktop/Proyecto_Tesis/blockchain/network/scripts/*.sh)",
+      "Bash(docker --version)",
+      "Bash(chmod +x /Users/nicolagabrielecolarusso/Desktop/Proyecto_Tesis/blockchain/network/install-fabric.sh /Users/nicolagabrielecolarusso/Desktop/Proyecto_Tesis/blockchain/network/scripts/*.sh)",
+      "Bash(./install-fabric.sh)",
+      "Bash(docker pull hyperledger/fabric-nodeenv:2.5)",
+      "Bash(docker pull hyperledger/fabric-nodeenv:2.5.9)",
+      "Bash(docker pull hyperledger/fabric-nodeenv:2.5.4)",
+      "Bash(docker tag hyperledger/fabric-nodeenv:2.5 hyperledger/fabric-nodeenv:2.5.12)",
+      "Bash(docker tag hyperledger/fabric-nodeenv:2.5 hyperledger/fabric-nodeenv:latest)",
+      "Bash(docker pull hyperledger/fabric-ca:1.5.13)",
+      "Bash(docker tag hyperledger/fabric-ca:1.5.13 hyperledger/fabric-ca:latest)",
+      "Bash(docker tag hyperledger/fabric-peer:2.5.12 hyperledger/fabric-peer:latest)",
+      "Bash(docker tag hyperledger/fabric-orderer:2.5.12 hyperledger/fabric-orderer:latest)",
+      "Bash(docker tag hyperledger/fabric-tools:2.5.12 hyperledger/fabric-tools:latest)",
+      "Bash(docker tag hyperledger/fabric-baseos:2.5.12 hyperledger/fabric-baseos:latest)",
+      "Bash(docker tag hyperledger/fabric-ccenv:2.5.12 hyperledger/fabric-ccenv:latest)",
+      "Bash(docker ps -a --format \"table {{.Names}}\\\\t{{.Status}}\\\\t{{.Ports}}\")",
+      "Bash(docker ps --format \"table {{.Names}}\\\\t{{.Status}}\")",
+      "Bash(docker version --format '{{.Server.APIVersion}}')",
+      "Bash(bash scripts/networkDown.sh)",
+      "Bash(docker ps -a --filter \"label=service=hyperledger-fabric\" --format \"{{.Names}}\")",
+      "Bash(docker ps -a --filter \"name=ca_\" --format \"{{.Names}}\")",
+      "Bash(docker exec peer0.hospital.salud.com env)",
+      "Bash(docker exec peer0.hospital.salud.com ls /opt/hyperledger/ccaas_builder/bin/)",
+      "Bash(docker ps --format \"table {{.Names}}\\\\t{{.Status}}\\\\t{{.Ports}}\")"
+    ]
+  }
+}
