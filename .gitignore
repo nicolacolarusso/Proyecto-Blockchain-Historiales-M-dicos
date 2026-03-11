@@ -1,0 +1,14 @@
+# Dependencias de JavaScript
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Archivos de sistema (Mac)
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Variables de entorno (¡Seguridad!)
+.env
+.env.local
