@@ -6,6 +6,10 @@ import DashboardPage from './pages/DashboardPage';
 import PatientsPage from './pages/PatientsPage';
 import RecordsPage from './pages/RecordsPage';
 import AuditPage from './pages/AuditPage';
+import PermissionsPage from './pages/PermissionsPage';
+import AdminUsersPage from './pages/AdminUsersPage';
+import ResultsPage from './pages/ResultsPage';
+import PrescriptionsPage from './pages/PrescriptionsPage';
 import { Box, CircularProgress } from '@mui/material';
 
 function ProtectedRoute({ children }) {
@@ -35,6 +39,10 @@ export default function App() {
           <Route path="/patients" element={<ProtectedRoute><PatientsPage /></ProtectedRoute>} />
           <Route path="/records" element={<ProtectedRoute><RecordsPage /></ProtectedRoute>} />
           <Route path="/audit" element={<ProtectedRoute><AuditPage /></ProtectedRoute>} />
+          <Route path="/permissions" element={<ProtectedRoute><PermissionsPage /></ProtectedRoute>} />
+          <Route path="/admin/users" element={<ProtectedRoute><AdminUsersPage /></ProtectedRoute>} />
+          <Route path="/results" element={<ProtectedRoute><ResultsPage /></ProtectedRoute>} />
+          <Route path="/prescriptions" element={<ProtectedRoute><PrescriptionsPage /></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </Box>

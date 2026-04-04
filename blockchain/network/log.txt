@@ -1,2 +1,2 @@
 Installed chaincodes on peer:
-Package ID: historiales_1.0:a2dcb413e1966f0053bcd61ca85af6152ae0bbe7cd945cfbc12ed86418f576ce, Label: historiales_1.0
+Package ID: historiales_1.0:925bd2eb0d1705f8b2854c4570b18fb7c1482eaa79b7a8a80912f0e41079fd5c, Label: historiales_1.0

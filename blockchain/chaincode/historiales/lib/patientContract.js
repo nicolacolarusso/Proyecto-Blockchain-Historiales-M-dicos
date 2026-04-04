@@ -12,6 +12,12 @@ class PatientContract extends Contract {
     console.info('============= Ledger de Pacientes Inicializado ==============');
   }
 
+  _getTxTimestamp(ctx) {
+    const ts = ctx.stub.getTxTimestamp();
+    const millis = (ts.seconds.low * 1000) + Math.round(ts.nanos / 1000000);
+    return new Date(millis).toISOString();
+  }
+
   async registrarPaciente(ctx, pacienteId, nombre, cedula, fechaNac, sexo,
                            direccion, telefono, tipoSangre, alergias) {
     const role = ctx.clientIdentity.getAttributeValue('role');
@@ -35,7 +41,7 @@ class PatientContract extends Contract {
       telefono,
       tipoSangre,
       alergias: JSON.parse(alergias),
-      fechaRegistro: new Date().toISOString(),
+      fechaRegistro: this._getTxTimestamp(ctx),
       registradoPor: ctx.clientIdentity.getID(),
       activo: true
     };
@@ -74,7 +80,7 @@ class PatientContract extends Contract {
     }
 
     paciente[campo] = campo === 'alergias' ? JSON.parse(nuevoValor) : nuevoValor;
-    paciente.ultimaModificacion = new Date().toISOString();
+    paciente.ultimaModificacion = this._getTxTimestamp(ctx);
     paciente.modificadoPor = ctx.clientIdentity.getID();
 
     await ctx.stub.putState(pacienteId, Buffer.from(JSON.stringify(paciente)));

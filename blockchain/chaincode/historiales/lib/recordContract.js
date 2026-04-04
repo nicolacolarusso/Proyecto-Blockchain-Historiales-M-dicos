@@ -9,6 +9,12 @@ class RecordContract extends Contract {
     super('RecordContract');
   }
 
+  _getTxTimestamp(ctx) {
+    const ts = ctx.stub.getTxTimestamp();
+    const millis = (ts.seconds.low * 1000) + Math.round(ts.nanos / 1000000);
+    return new Date(millis).toISOString();
+  }
+
   async crearRegistro(ctx, registroId, pacienteId, tipo, diagnostico,
                        tratamiento, notas, adjuntosHash) {
     const role = ctx.clientIdentity.getAttributeValue('role');
@@ -28,7 +34,7 @@ class RecordContract extends Contract {
       notas,
       adjuntosHash: JSON.parse(adjuntosHash),
       medicoId,
-      fechaCreacion: new Date().toISOString(),
+      fechaCreacion: this._getTxTimestamp(ctx),
       estado: 'activo',
       version: 1
     };
@@ -69,7 +75,8 @@ class RecordContract extends Contract {
     // Registrar acceso en el ledger
     const usuarioId = ctx.clientIdentity.getID();
     const role = ctx.clientIdentity.getAttributeValue('role') || 'desconocido';
-    const accesoId = `acceso_${pacienteId}_${Date.now()}`;
+    const txTimestamp = this._getTxTimestamp(ctx);
+    const accesoId = `acceso_${pacienteId}_${ctx.stub.getTxTimestamp().seconds.low}`;
     const acceso = {
       docType: 'registroAcceso',
       id: accesoId,
@@ -77,7 +84,7 @@ class RecordContract extends Contract {
       tipoAcceso: 'LECTURA',
       pacienteId,
       role,
-      timestamp: new Date().toISOString(),
+      timestamp: txTimestamp,
       registrosAccedidos: registros.length
     };
     await ctx.stub.putState(accesoId, Buffer.from(JSON.stringify(acceso)));
@@ -96,15 +103,16 @@ class RecordContract extends Contract {
       throw new Error('Solo el medico que creo el registro puede actualizarlo');
     }
 
-    const camposEditables = ['diagnostico', 'tratamiento', 'notas'];
+    const camposEditables = ['diagnostico', 'tratamiento', 'notas', 'imagenesRef'];
     if (!camposEditables.includes(campo)) {
       throw new Error(`El campo ${campo} no es editable`);
     }
 
     registro[campo] = nuevoValor;
     registro.version += 1;
-    registro.ultimaModificacion = new Date().toISOString();
+    registro.ultimaModificacion = this._getTxTimestamp(ctx);
 
+    // imagenesRef no afecta el hash de integridad clinica (es metadata de almacenamiento)
     registro.hashIntegridad = crypto
       .createHash('sha256')
       .update(JSON.stringify({

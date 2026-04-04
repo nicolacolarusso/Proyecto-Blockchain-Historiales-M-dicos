@@ -8,6 +8,12 @@ class AccessContract extends Contract {
     super('AccessContract');
   }
 
+  _getTxTimestamp(ctx) {
+    const ts = ctx.stub.getTxTimestamp();
+    const millis = (ts.seconds.low * 1000) + Math.round(ts.nanos / 1000000);
+    return new Date(millis).toISOString();
+  }
+
   async otorgarPermiso(ctx, pacienteId, medicoId, duracionDias) {
     const role = ctx.clientIdentity.getAttributeValue('role');
     if (role !== 'paciente' && role !== 'admin') {
@@ -15,7 +21,9 @@ class AccessContract extends Contract {
     }
 
     const permisoKey = `permiso_${pacienteId}_${medicoId}`;
-    const expiracion = new Date();
+    const txTs = ctx.stub.getTxTimestamp();
+    const txMillis = (txTs.seconds.low * 1000) + Math.round(txTs.nanos / 1000000);
+    const expiracion = new Date(txMillis);
     expiracion.setDate(expiracion.getDate() + parseInt(duracionDias));
 
     const permiso = {
@@ -23,7 +31,7 @@ class AccessContract extends Contract {
       pacienteId,
       medicoId,
       otorgadoPor: ctx.clientIdentity.getID(),
-      fechaOtorgamiento: new Date().toISOString(),
+      fechaOtorgamiento: this._getTxTimestamp(ctx),
       expiracion: expiracion.toISOString(),
       activo: true,
       tipoPermiso: 'lectura'
@@ -51,7 +59,7 @@ class AccessContract extends Contract {
 
     const permiso = JSON.parse(data.toString());
     permiso.activo = false;
-    permiso.fechaRevocacion = new Date().toISOString();
+    permiso.fechaRevocacion = this._getTxTimestamp(ctx);
 
     await ctx.stub.putState(permisoKey, Buffer.from(JSON.stringify(permiso)));
     ctx.stub.setEvent('PermisoRevocado', Buffer.from(JSON.stringify({

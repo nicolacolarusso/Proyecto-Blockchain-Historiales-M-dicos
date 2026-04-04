@@ -2,27 +2,92 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 const logger = require('../config/logger');
-// const fabricCAService = require('../services/fabricCAService');
-// const sequelize = require('../config/database');
+const fabricCAService = require('../services/fabricCAService');
+const blockchainService = require('../services/blockchainService');
+const { User, Patient, AuditLog } = require('../models');
 
-// Almacen temporal en memoria (reemplazar con PostgreSQL en produccion)
+// Almacen en memoria (funciona con o sin blockchain)
 const users = new Map();
 
-// Seed: crear admin por defecto
+// Seed: crear usuarios por defecto
 users.set('admin', {
   id: uuidv4(),
   username: 'admin',
   passwordHash: bcrypt.hashSync('admin123', 10),
   role: 'admin',
-  fabricIdentity: 'admin',
+  fabricIdentity: 'admin-app',
   nombre: 'Administrador del Sistema',
   cedula: '00000000'
 });
+users.set('doctor', {
+  id: uuidv4(),
+  username: 'doctor',
+  passwordHash: bcrypt.hashSync('doctor123', 10),
+  role: 'medico',
+  fabricIdentity: 'doctor',
+  nombre: 'Dr. Carlos Garcia',
+  cedula: 'V-12345678'
+});
+users.set('paciente', {
+  id: uuidv4(),
+  username: 'paciente',
+  passwordHash: bcrypt.hashSync('paciente123', 10),
+  role: 'paciente',
+  fabricIdentity: 'paciente',
+  nombre: 'Maria Lopez',
+  cedula: 'V-87654321'
+});
+users.set('laboratorista', {
+  id: uuidv4(),
+  username: 'laboratorista',
+  passwordHash: bcrypt.hashSync('lab123', 10),
+  role: 'laboratorista',
+  fabricIdentity: 'laboratorista',
+  nombre: 'Lic. Pedro Martinez',
+  cedula: 'V-11223344',
+  departamento: 'Laboratorio'
+});
+users.set('farmacia', {
+  id: uuidv4(),
+  username: 'farmacia',
+  passwordHash: bcrypt.hashSync('farm123', 10),
+  role: 'farmacia',
+  fabricIdentity: 'farmacia',
+  nombre: 'Farm. Ana Torres',
+  cedula: 'V-55667788',
+  departamento: 'Farmacia'
+});
 
 const authController = {
+  getUsers() { return users; },
+
+  async loadFromDB() {
+    try {
+      const dbUsers = await User.findAll({ where: { activo: true } });
+      for (const u of dbUsers) {
+        if (!users.has(u.username)) {
+          users.set(u.username, u.toJSON());
+        }
+      }
+      // Guardar seed users en DB si no existen
+      for (const [username, userData] of users) {
+        try {
+          await User.findOrCreate({
+            where: { username },
+            defaults: { ...userData, activo: true }
+          });
+        } catch (e) { /* ya existe */ }
+      }
+      logger.info(`Usuarios sincronizados con DB (${users.size} en memoria)`);
+    } catch (err) {
+      logger.warn(`No se pudieron cargar usuarios de DB: ${err.message}`);
+    }
+  },
+
   async register(req, res) {
     try {
-      const { username, password, role, nombre, cedula, departamento } = req.body;
+      const { username, password, role, nombre, cedula, departamento,
+              fechaNacimiento, sexo, direccion, telefono, tipoSangre, alergias } = req.body;
 
       if (!username || !password || !role || !nombre) {
         return res.status(400).json({ error: 'Campos requeridos: username, password, role, nombre' });
@@ -32,15 +97,32 @@ const authController = {
         return res.status(409).json({ error: 'El usuario ya existe' });
       }
 
-      const validRoles = ['medico', 'paciente', 'administrativo', 'auditor'];
+      const validRoles = ['medico', 'paciente', 'administrativo', 'auditor', 'laboratorista', 'radiologo', 'farmacia'];
       if (!validRoles.includes(role)) {
         return res.status(400).json({ error: `Rol invalido. Roles validos: ${validRoles.join(', ')}` });
       }
 
+      // Validaciones adicionales si es paciente
+      if (role === 'paciente') {
+        if (!cedula) {
+          return res.status(400).json({ error: 'La cedula es requerida para pacientes' });
+        }
+        if (!fechaNacimiento) {
+          return res.status(400).json({ error: 'La fecha de nacimiento es requerida para pacientes' });
+        }
+        if (!sexo) {
+          return res.status(400).json({ error: 'El sexo es requerido para pacientes' });
+        }
+      }
+
       const passwordHash = await bcrypt.hash(password, 10);
 
-      // TODO: Registrar en Fabric CA cuando la red blockchain este activa
-      // await fabricCAService.registrarUsuario(username, role, departamento);
+      // Intentar registrar en Fabric CA (si esta disponible)
+      try {
+        await fabricCAService.registrarUsuario(username, role, departamento);
+      } catch (fabricErr) {
+        logger.warn(`Fabric CA registro fallido para ${username}: ${fabricErr.message}`);
+      }
 
       const user = {
         id: uuidv4(),
@@ -55,10 +137,69 @@ const authController = {
       };
 
       users.set(username, user);
+      try { await User.create({ ...user, activo: true }); } catch (e) { logger.warn(`DB write user: ${e.message}`); }
       logger.info(`Usuario registrado: ${username} con rol ${role}`);
 
+      // Si es paciente, auto-crear ficha de paciente
+      let pacienteCreado = null;
+      if (role === 'paciente') {
+        try {
+          const patientController = require('./patientController');
+          const patientsMap = patientController.getPatients();
+
+          const pacienteId = `PAC-${uuidv4().slice(0, 8).toUpperCase()}`;
+          const paciente = {
+            id: pacienteId,
+            nombre,
+            cedula,
+            fechaNacimiento,
+            sexo,
+            direccion: direccion || '',
+            telefono: telefono || '',
+            tipoSangre: tipoSangre || '',
+            alergias: alergias || [],
+            fechaRegistro: new Date().toISOString(),
+            registradoPor: req.user.username,
+            enBlockchain: false
+          };
+
+          // Blockchain
+          if (blockchainService.available) {
+            try {
+              await blockchainService.registrarPaciente(req.user.fabricIdentity, paciente);
+              paciente.enBlockchain = true;
+              logger.info(`Paciente ${pacienteId} registrado en blockchain`);
+            } catch (bcErr) {
+              logger.warn(`Blockchain fallback para paciente ${pacienteId}: ${bcErr.message}`);
+            }
+          }
+
+          // DB
+          try { await Patient.create(paciente); } catch (dbErr) {
+            logger.warn(`DB fallback para paciente ${pacienteId}: ${dbErr.message}`);
+          }
+
+          // Cache
+          patientsMap.set(pacienteId, paciente);
+
+          // Audit
+          try {
+            await AuditLog.create({
+              accion: 'CREAR', entidad: 'paciente', entidadId: pacienteId,
+              usuarioId: req.user.username, usuarioRole: req.user.role,
+              detalles: { nombre, cedula, creadoDesdeRegistroUsuario: true }, ip: req.ip
+            });
+          } catch (e) { /* audit no critico */ }
+
+          pacienteCreado = paciente;
+          logger.info(`Ficha de paciente auto-creada: ${pacienteId} para usuario ${username}`);
+        } catch (patErr) {
+          logger.error(`Error auto-creando paciente para ${username}: ${patErr.message}`);
+        }
+      }
+
       const { passwordHash: _, ...userSafe } = user;
-      res.status(201).json(userSafe);
+      res.status(201).json({ ...userSafe, paciente: pacienteCreado });
     } catch (err) {
       logger.error('Error en register:', err);
       res.status(500).json({ error: err.message });
@@ -119,10 +260,14 @@ const authController = {
         return res.status(400).json({ error: 'Username requerido' });
       }
 
-      // TODO: Revocar en Fabric CA
-      // await fabricCAService.revocarUsuario(username, reason || 'cessationofoperation');
+      try {
+        await fabricCAService.revocarUsuario(username, reason || 'cessationofoperation');
+      } catch (fabricErr) {
+        logger.warn(`Fabric CA revocacion fallida: ${fabricErr.message}`);
+      }
 
       users.delete(username);
+      try { await User.update({ activo: false }, { where: { username } }); } catch (e) { logger.warn(`DB update user: ${e.message}`); }
       logger.info(`Usuario revocado: ${username}`);
 
       res.json({ message: `Usuario ${username} revocado exitosamente` });

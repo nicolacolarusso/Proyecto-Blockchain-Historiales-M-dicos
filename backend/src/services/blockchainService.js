@@ -5,7 +5,39 @@ const logger = require('../config/logger');
 
 class BlockchainService {
 
+  constructor() {
+    this._available = false;
+  }
+
+  get available() {
+    return this._available;
+  }
+
+  async init() {
+    try {
+      if (!fs.existsSync(fabricConfig.ccpPath)) {
+        logger.warn('Connection profile no encontrado. Blockchain queries no disponibles.');
+        return false;
+      }
+      const wallet = await Wallets.newFileSystemWallet(fabricConfig.walletPath);
+      const adminIdentity = await wallet.get('admin');
+      if (!adminIdentity) {
+        logger.warn('Admin no encontrado en wallet. Blockchain queries no disponibles.');
+        return false;
+      }
+      this._available = true;
+      logger.info('Blockchain Service inicializado correctamente');
+      return true;
+    } catch (err) {
+      logger.warn(`Blockchain Service no disponible: ${err.message}`);
+      this._available = false;
+      return false;
+    }
+  }
+
   async _getContract(userId, contractName) {
+    if (!this._available) throw new Error('Blockchain no disponible');
+
     const ccp = JSON.parse(fs.readFileSync(fabricConfig.ccpPath, 'utf8'));
     const wallet = await Wallets.newFileSystemWallet(fabricConfig.walletPath);
 
@@ -175,6 +207,92 @@ class BlockchainService {
     const { gateway, contract } = await this._getContract(userId, 'AccessContract');
     try {
       const result = await contract.evaluateTransaction('consultarAccesos', pacienteId);
+      return JSON.parse(result.toString());
+    } finally {
+      gateway.disconnect();
+    }
+  }
+
+  // --- Resultados ---
+
+  async crearResultado(userId, data) {
+    const { gateway, contract } = await this._getContract(userId, 'ResultContract');
+    try {
+      const result = await contract.submitTransaction(
+        'crearResultado',
+        data.id, data.pacienteId, data.tipo, data.categoria,
+        data.descripcion, data.valores, data.unidades,
+        data.referencia || '', data.observaciones || ''
+      );
+      return JSON.parse(result.toString());
+    } finally {
+      gateway.disconnect();
+    }
+  }
+
+  async consultarResultados(userId, pacienteId) {
+    const { gateway, contract } = await this._getContract(userId, 'ResultContract');
+    try {
+      const result = await contract.evaluateTransaction('consultarResultadosPaciente', pacienteId);
+      return JSON.parse(result.toString());
+    } finally {
+      gateway.disconnect();
+    }
+  }
+
+  async verificarIntegridadResultado(userId, resultadoId) {
+    const { gateway, contract } = await this._getContract(userId, 'ResultContract');
+    try {
+      const result = await contract.evaluateTransaction('verificarIntegridadResultado', resultadoId);
+      return JSON.parse(result.toString());
+    } finally {
+      gateway.disconnect();
+    }
+  }
+
+  // --- Prescripciones ---
+
+  async emitirReceta(userId, data) {
+    const { gateway, contract } = await this._getContract(userId, 'PrescriptionContract');
+    try {
+      const result = await contract.submitTransaction(
+        'emitirReceta',
+        data.id, data.pacienteId,
+        JSON.stringify(data.medicamentos),
+        data.indicaciones, (data.duracionDias || 30).toString()
+      );
+      return JSON.parse(result.toString());
+    } finally {
+      gateway.disconnect();
+    }
+  }
+
+  async consultarRecetas(userId, pacienteId) {
+    const { gateway, contract } = await this._getContract(userId, 'PrescriptionContract');
+    try {
+      const result = await contract.evaluateTransaction('consultarRecetasPaciente', pacienteId);
+      return JSON.parse(result.toString());
+    } finally {
+      gateway.disconnect();
+    }
+  }
+
+  async dispensarReceta(userId, recetaId, farmaciaId, notas) {
+    const { gateway, contract } = await this._getContract(userId, 'PrescriptionContract');
+    try {
+      const result = await contract.submitTransaction(
+        'dispensarReceta', recetaId, farmaciaId, notas || ''
+      );
+      return JSON.parse(result.toString());
+    } finally {
+      gateway.disconnect();
+    }
+  }
+
+  async verificarAutenticidadReceta(userId, recetaId) {
+    const { gateway, contract } = await this._getContract(userId, 'PrescriptionContract');
+    try {
+      const result = await contract.evaluateTransaction('verificarAutenticidad', recetaId);
       return JSON.parse(result.toString());
     } finally {
       gateway.disconnect();

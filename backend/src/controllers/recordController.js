@@ -1,12 +1,29 @@
 const { v4: uuidv4 } = require('uuid');
+const crypto = require('crypto');
 const logger = require('../config/logger');
-// const blockchainService = require('../services/blockchainService');
+const blockchainService = require('../services/blockchainService');
+const { MedicalRecord, Permission, AuditLog } = require('../models');
 
-// Almacen temporal (reemplazar con blockchain + PostgreSQL)
+// Cache en memoria
 const records = new Map();
 const permissions = new Map();
 
 const recordController = {
+  getRecords() { return records; },
+  getPermissions() { return permissions; },
+
+  async loadFromDB() {
+    try {
+      const dbRecords = await MedicalRecord.findAll();
+      for (const r of dbRecords) records.set(r.id, r.toJSON());
+      const dbPerms = await Permission.findAll();
+      for (const p of dbPerms) permissions.set(`${p.pacienteId}_${p.medicoId}`, p.toJSON());
+      logger.info(`${dbRecords.length} registros y ${dbPerms.length} permisos cargados de DB`);
+    } catch (err) {
+      logger.warn(`No se pudieron cargar registros de DB: ${err.message}`);
+    }
+  },
+
   async crear(req, res) {
     try {
       const { pacienteId, tipo, diagnostico, tratamiento, notas, adjuntosHash } = req.body;
@@ -17,6 +34,10 @@ const recordController = {
 
       const registroId = `REG-${uuidv4().slice(0, 8).toUpperCase()}`;
 
+      // Calcular hash de integridad
+      const contenidoClinico = `${tipo}|${diagnostico}|${tratamiento || ''}|${notas || ''}`;
+      const hashIntegridad = crypto.createHash('sha256').update(contenidoClinico).digest('hex');
+
       const registro = {
         id: registroId,
         pacienteId,
@@ -25,19 +46,39 @@ const recordController = {
         tratamiento: tratamiento || '',
         notas: notas || '',
         adjuntosHash: adjuntosHash || [],
-        medicoId: req.user.id,
-        medicoNombre: req.user.fabricIdentity,
+        hashIntegridad,
+        medicoId: req.user.username,
+        medicoNombre: req.user.username,
         fechaCreacion: new Date().toISOString(),
         estado: 'activo',
-        version: 1
+        version: 1,
+        enBlockchain: false
       };
 
-      // TODO: Crear en blockchain
-      // const result = await blockchainService.crearRegistro(req.user.fabricIdentity, registro);
+      // Intentar crear en blockchain
+      if (blockchainService.available) {
+        try {
+          await blockchainService.crearRegistro(req.user.fabricIdentity, registro);
+          registro.enBlockchain = true;
+          logger.info(`Registro ${registroId} creado en blockchain`);
+        } catch (bcErr) {
+          logger.warn(`Blockchain fallback para registro ${registroId}: ${bcErr.message}`);
+        }
+      }
 
       records.set(registroId, registro);
-      logger.info(`Registro medico creado: ${registroId} para paciente ${pacienteId}`);
 
+      // Persistir en DB
+      try { await MedicalRecord.create(registro); } catch (e) { logger.warn(`DB write registro: ${e.message}`); }
+      try {
+        await AuditLog.create({
+          accion: 'CREAR', entidad: 'registro', entidadId: registroId,
+          usuarioId: req.user.username, usuarioRole: req.user.role,
+          detalles: { pacienteId, tipo, diagnostico: diagnostico.substring(0, 100) }, ip: req.ip
+        });
+      } catch (e) { /* audit no critico */ }
+
+      logger.info(`Registro medico creado: ${registroId} para paciente ${pacienteId}`);
       res.status(201).json(registro);
     } catch (err) {
       logger.error('Error creando registro:', err);
@@ -49,7 +90,6 @@ const recordController = {
     try {
       const { pacienteId } = req.params;
 
-      // TODO: Consultar en blockchain
       const registros = [];
       for (const [, reg] of records) {
         if (reg.pacienteId === pacienteId) {
@@ -74,19 +114,33 @@ const recordController = {
         return res.status(404).json({ error: 'Registro no encontrado' });
       }
 
-      if (registro.medicoId !== req.user.id) {
+      if (registro.medicoId !== req.user.username) {
         return res.status(403).json({ error: 'Solo el medico que creo el registro puede actualizarlo' });
       }
 
-      const camposEditables = ['diagnostico', 'tratamiento', 'notas'];
+      const camposEditables = ['diagnostico', 'tratamiento', 'notas', 'imagenesRef'];
       if (!camposEditables.includes(campo)) {
         return res.status(400).json({ error: `Campo no editable. Validos: ${camposEditables.join(', ')}` });
+      }
+
+      if (blockchainService.available) {
+        try {
+          await blockchainService.actualizarRegistro(req.user.fabricIdentity, id, campo, nuevoValor);
+        } catch (bcErr) {
+          logger.warn(`Blockchain fallback para actualizar registro: ${bcErr.message}`);
+        }
       }
 
       registro[campo] = nuevoValor;
       registro.version += 1;
       registro.ultimaModificacion = new Date().toISOString();
+
+      // Recalcular hash
+      const contenidoClinico = `${registro.tipo}|${registro.diagnostico}|${registro.tratamiento}|${registro.notas}`;
+      registro.hashIntegridad = crypto.createHash('sha256').update(contenidoClinico).digest('hex');
+
       records.set(id, registro);
+      try { await MedicalRecord.update({ [campo]: nuevoValor, version: registro.version, hashIntegridad: registro.hashIntegridad }, { where: { id } }); } catch (e) { logger.warn(`DB update registro: ${e.message}`); }
 
       logger.info(`Registro actualizado: ${id}`);
       res.json(registro);
@@ -100,12 +154,25 @@ const recordController = {
     try {
       const { id } = req.params;
 
-      // TODO: Obtener de blockchain con getHistoryForKey
-      res.json({
-        registroId: id,
-        historial: [],
-        mensaje: 'Auditoria disponible cuando la red blockchain este activa'
-      });
+      if (blockchainService.available) {
+        try {
+          const historial = await blockchainService.auditoriaRegistro(req.user.fabricIdentity, id);
+          return res.json({ registroId: id, historial, fuente: 'blockchain' });
+        } catch (bcErr) {
+          logger.warn(`Blockchain auditoria fallback: ${bcErr.message}`);
+        }
+      }
+
+      // Fallback: historial basico desde memoria
+      const registro = records.get(id);
+      const historial = registro ? [{
+        txId: 'local-' + uuidv4().slice(0, 8),
+        timestamp: registro.fechaCreacion,
+        valor: JSON.stringify(registro),
+        version: registro.version
+      }] : [];
+
+      res.json({ registroId: id, historial, fuente: 'memoria' });
     } catch (err) {
       logger.error('Error en auditoria:', err);
       res.status(500).json({ error: err.message });
@@ -116,11 +183,30 @@ const recordController = {
     try {
       const { id } = req.params;
 
-      // TODO: Verificar en blockchain
+      if (blockchainService.available) {
+        try {
+          const resultado = await blockchainService.verificarIntegridad(req.user.fabricIdentity, id);
+          return res.json(resultado);
+        } catch (bcErr) {
+          logger.warn(`Blockchain verificacion fallback: ${bcErr.message}`);
+        }
+      }
+
+      // Verificacion local
+      const registro = records.get(id);
+      if (!registro) {
+        return res.status(404).json({ error: 'Registro no encontrado' });
+      }
+
+      const contenidoClinico = `${registro.tipo}|${registro.diagnostico}|${registro.tratamiento}|${registro.notas}`;
+      const hashCalculado = crypto.createHash('sha256').update(contenidoClinico).digest('hex');
+
       res.json({
         registroId: id,
-        integridadOk: true,
-        mensaje: 'Verificacion completa disponible con blockchain activa'
+        integridadOk: hashCalculado === registro.hashIntegridad,
+        hashAlmacenado: registro.hashIntegridad,
+        hashCalculado,
+        fuente: 'memoria'
       });
     } catch (err) {
       logger.error('Error verificando integridad:', err);
@@ -143,14 +229,22 @@ const recordController = {
       const permiso = {
         pacienteId,
         medicoId,
-        otorgadoPor: req.user.id,
+        otorgadoPor: req.user.username,
         fechaOtorgamiento: new Date().toISOString(),
         expiracion: expiracion.toISOString(),
         activo: true
       };
 
-      // TODO: Registrar en blockchain
+      if (blockchainService.available) {
+        try {
+          await blockchainService.otorgarPermiso(req.user.fabricIdentity, pacienteId, medicoId, duracionDias || 30);
+        } catch (bcErr) {
+          logger.warn(`Blockchain permiso fallback: ${bcErr.message}`);
+        }
+      }
+
       permissions.set(permisoKey, permiso);
+      try { await Permission.create(permiso); } catch (e) { logger.warn(`DB write permiso: ${e.message}`); }
 
       logger.info(`Permiso otorgado: paciente ${pacienteId} -> medico ${medicoId}`);
       res.status(201).json(permiso);
@@ -168,6 +262,14 @@ const recordController = {
       const permiso = permissions.get(permisoKey);
       if (!permiso) {
         return res.status(404).json({ error: 'Permiso no encontrado' });
+      }
+
+      if (blockchainService.available) {
+        try {
+          await blockchainService.revocarPermiso(req.user.fabricIdentity, pacienteId, medicoId);
+        } catch (bcErr) {
+          logger.warn(`Blockchain revocar fallback: ${bcErr.message}`);
+        }
       }
 
       permiso.activo = false;

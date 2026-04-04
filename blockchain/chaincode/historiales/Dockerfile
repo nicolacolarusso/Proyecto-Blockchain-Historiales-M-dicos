@@ -12,9 +12,9 @@ COPY lib/ ./lib/
 
 # Variables de entorno para ccaas server mode
 ENV CHAINCODE_SERVER_ADDRESS=0.0.0.0:9999
-ENV CORE_CHAINCODE_ID_NAME=""
+ENV CHAINCODE_ID=""
 
 EXPOSE 9999
 
 # Usar fabric-chaincode-node server para modo ccaas
-CMD ["npx", "fabric-chaincode-node", "server"]
+CMD npx fabric-chaincode-node server --chaincode-address "$CHAINCODE_SERVER_ADDRESS" --chaincode-id "$CHAINCODE_ID"

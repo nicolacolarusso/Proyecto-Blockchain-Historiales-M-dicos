@@ -1,11 +1,27 @@
 const { v4: uuidv4 } = require('uuid');
 const logger = require('../config/logger');
-// const blockchainService = require('../services/blockchainService');
+const blockchainService = require('../services/blockchainService');
+const { Patient, AuditLog } = require('../models');
 
-// Almacen temporal (reemplazar con blockchain + PostgreSQL)
+// Cache en memoria para queries rapidas
 const patients = new Map();
 
 const patientController = {
+  getPatients() { return patients; },
+
+  // Cargar pacientes de DB al cache en memoria al inicio
+  async loadFromDB() {
+    try {
+      const dbPatients = await Patient.findAll({ where: { activo: true } });
+      for (const p of dbPatients) {
+        patients.set(p.id, p.toJSON());
+      }
+      logger.info(`${dbPatients.length} pacientes cargados de la base de datos`);
+    } catch (err) {
+      logger.warn(`No se pudieron cargar pacientes de DB: ${err.message}`);
+    }
+  },
+
   async listar(req, res) {
     try {
       const lista = Array.from(patients.values());
@@ -20,10 +36,6 @@ const patientController = {
     try {
       const { nombre, cedula, fechaNacimiento, sexo, direccion, telefono, tipoSangre, alergias } = req.body;
 
-      if (!nombre || !cedula) {
-        return res.status(400).json({ error: 'Nombre y cedula son requeridos' });
-      }
-
       const pacienteId = `PAC-${uuidv4().slice(0, 8).toUpperCase()}`;
 
       const paciente = {
@@ -37,15 +49,41 @@ const patientController = {
         tipoSangre,
         alergias: alergias || [],
         fechaRegistro: new Date().toISOString(),
-        registradoPor: req.user.id
+        registradoPor: req.user.username,
+        enBlockchain: false
       };
 
-      // TODO: Registrar en blockchain
-      // const result = await blockchainService.registrarPaciente(req.user.fabricIdentity, paciente);
+      // Intentar registrar en blockchain
+      if (blockchainService.available) {
+        try {
+          await blockchainService.registrarPaciente(req.user.fabricIdentity, paciente);
+          paciente.enBlockchain = true;
+          logger.info(`Paciente ${pacienteId} registrado en blockchain`);
+        } catch (bcErr) {
+          logger.warn(`Blockchain fallback para paciente ${pacienteId}: ${bcErr.message}`);
+        }
+      }
 
+      // Persistir en DB
+      try {
+        await Patient.create(paciente);
+      } catch (dbErr) {
+        logger.warn(`DB fallback para paciente ${pacienteId}: ${dbErr.message}`);
+      }
+
+      // Cache en memoria
       patients.set(pacienteId, paciente);
-      logger.info(`Paciente registrado: ${pacienteId} - ${nombre}`);
 
+      // Audit log
+      try {
+        await AuditLog.create({
+          accion: 'CREAR', entidad: 'paciente', entidadId: pacienteId,
+          usuarioId: req.user.username, usuarioRole: req.user.role,
+          detalles: { nombre, cedula }, ip: req.ip
+        });
+      } catch (e) { /* audit log no critico */ }
+
+      logger.info(`Paciente registrado: ${pacienteId} - ${nombre}`);
       res.status(201).json(paciente);
     } catch (err) {
       logger.error('Error registrando paciente:', err);
@@ -56,11 +94,19 @@ const patientController = {
   async consultar(req, res) {
     try {
       const { id } = req.params;
+      let paciente = patients.get(id);
 
-      // TODO: Consultar en blockchain
-      // const paciente = await blockchainService.consultarPaciente(req.user.fabricIdentity, id);
+      // Si no esta en cache, intentar DB
+      if (!paciente) {
+        try {
+          const dbPac = await Patient.findByPk(id);
+          if (dbPac) {
+            paciente = dbPac.toJSON();
+            patients.set(id, paciente);
+          }
+        } catch (e) { /* DB no disponible */ }
+      }
 
-      const paciente = patients.get(id);
       if (!paciente) {
         return res.status(404).json({ error: 'Paciente no encontrado' });
       }
@@ -87,10 +133,23 @@ const patientController = {
         return res.status(400).json({ error: `Campo no editable. Campos validos: ${camposEditables.join(', ')}` });
       }
 
-      // TODO: Actualizar en blockchain
+      // Blockchain
+      if (blockchainService.available) {
+        try {
+          await blockchainService.actualizarPaciente(req.user.fabricIdentity, id, campo, nuevoValor);
+        } catch (bcErr) {
+          logger.warn(`Blockchain fallback para actualizar ${id}: ${bcErr.message}`);
+        }
+      }
+
       paciente[campo] = nuevoValor;
       paciente.ultimaModificacion = new Date().toISOString();
       patients.set(id, paciente);
+
+      // DB
+      try {
+        await Patient.update({ [campo]: nuevoValor }, { where: { id } });
+      } catch (e) { /* DB fallback */ }
 
       logger.info(`Paciente actualizado: ${id}, campo: ${campo}`);
       res.json(paciente);
@@ -104,14 +163,23 @@ const patientController = {
     try {
       const { id } = req.params;
 
-      // TODO: Obtener historial de blockchain
-      // const historial = await blockchainService.historialPaciente(req.user.fabricIdentity, id);
+      if (blockchainService.available) {
+        try {
+          const historial = await blockchainService.historialPaciente(req.user.fabricIdentity, id);
+          return res.json({ pacienteId: id, historial, fuente: 'blockchain' });
+        } catch (bcErr) {
+          logger.warn(`Blockchain historial fallback: ${bcErr.message}`);
+        }
+      }
 
-      res.json({
-        pacienteId: id,
-        historial: [],
-        mensaje: 'Historial disponible cuando la red blockchain este activa'
-      });
+      const paciente = patients.get(id);
+      const historial = paciente ? [{
+        txId: 'local',
+        timestamp: paciente.fechaRegistro,
+        valor: JSON.stringify(paciente)
+      }] : [];
+
+      res.json({ pacienteId: id, historial, fuente: 'memoria' });
     } catch (err) {
       logger.error('Error obteniendo historial:', err);
       res.status(500).json({ error: err.message });
