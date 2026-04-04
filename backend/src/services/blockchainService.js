@@ -1,7 +1,16 @@
-const { Gateway, Wallets } = require('fabric-network');
 const fs = require('fs');
 const fabricConfig = require('../config/fabricConfig');
 const logger = require('../config/logger');
+
+// Fabric SDK es opcional (no disponible en deploys cloud sin blockchain)
+let Gateway, Wallets;
+try {
+  const fabricNetwork = require('fabric-network');
+  Gateway = fabricNetwork.Gateway;
+  Wallets = fabricNetwork.Wallets;
+} catch (e) {
+  logger.info('fabric-network no instalado. Blockchain no disponible.');
+}
 
 class BlockchainService {
 
@@ -15,6 +24,10 @@ class BlockchainService {
 
   async init() {
     try {
+      if (!Gateway || !Wallets) {
+        logger.info('Fabric SDK no disponible. Funcionando sin blockchain.');
+        return false;
+      }
       if (!fs.existsSync(fabricConfig.ccpPath)) {
         logger.warn('Connection profile no encontrado. Blockchain queries no disponibles.');
         return false;

@@ -33,12 +33,30 @@ if (process.env.DATABASE_URL) {
   );
 } else {
   // SQLite (desarrollo local - funciona sin dependencias externas)
-  const dbPath = process.env.DB_PATH || path.join(__dirname, '..', '..', 'data', 'historiales.sqlite');
-  sequelize = new Sequelize({
-    dialect: 'sqlite',
-    storage: dbPath,
-    logging: (msg) => logger.debug(msg)
-  });
+  try {
+    require('sqlite3');
+    const dbPath = process.env.DB_PATH || path.join(__dirname, '..', '..', 'data', 'historiales.sqlite');
+    sequelize = new Sequelize({
+      dialect: 'sqlite',
+      storage: dbPath,
+      logging: (msg) => logger.debug(msg)
+    });
+  } catch (e) {
+    // sqlite3 no instalado, usar PostgreSQL por defecto
+    logger.warn('sqlite3 no disponible, usando PostgreSQL');
+    sequelize = new Sequelize(
+      process.env.DB_NAME || 'historiales_medicos',
+      process.env.DB_USER || 'postgres',
+      process.env.DB_PASSWORD || 'postgres',
+      {
+        host: process.env.DB_HOST || 'localhost',
+        port: process.env.DB_PORT || 5432,
+        dialect: 'postgres',
+        logging: (msg) => logger.debug(msg),
+        pool: { max: 10, min: 0, acquire: 30000, idle: 10000 }
+      }
+    );
+  }
 }
 
 module.exports = sequelize;
