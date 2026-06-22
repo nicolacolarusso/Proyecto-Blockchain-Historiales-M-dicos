@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Paper, Typography, TextField, Button, Box, Alert,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
@@ -14,6 +14,19 @@ export default function PermissionManager({ pacienteId }) {
   const [permisos, setPermisos] = useState([]);
   const [message, setMessage] = useState(null);
 
+  // Cargar permisos existentes al montar o cuando cambie el pacienteId
+  useEffect(() => {
+    if (!pacienteId) return;
+    (async () => {
+      try {
+        const res = await api.get(`/records/share/${pacienteId}`);
+        setPermisos(res.data);
+      } catch (err) {
+        console.error('Error al cargar permisos:', err);
+      }
+    })();
+  }, [pacienteId]);
+
   const handleOtorgar = async () => {
     if (!medicoId) return;
     try {
@@ -22,7 +35,16 @@ export default function PermissionManager({ pacienteId }) {
         medicoId,
         duracionDias: parseInt(dias)
       });
-      setPermisos([...permisos, res.data]);
+      // Reemplazar si ya existe o agregar
+      setPermisos(prev => {
+        const idx = prev.findIndex(p => p.medicoId === medicoId);
+        if (idx >= 0) {
+          const updated = [...prev];
+          updated[idx] = res.data;
+          return updated;
+        }
+        return [...prev, res.data];
+      });
       setMessage({ type: 'success', text: `Permiso otorgado al medico ${medicoId}` });
       setMedicoId('');
     } catch (err) {
@@ -36,7 +58,7 @@ export default function PermissionManager({ pacienteId }) {
         data: { pacienteId, medicoId: medicoIdToRevoke }
       });
       setPermisos(permisos.map(p =>
-        p.medicoId === medicoIdToRevoke ? { ...p, activo: false } : p
+        p.medicoId === medicoIdToRevoke ? { ...p, activo: false, fechaRevocacion: new Date().toISOString() } : p
       ));
       setMessage({ type: 'success', text: `Permiso revocado para medico ${medicoIdToRevoke}` });
     } catch (err) {
@@ -81,10 +103,14 @@ export default function PermissionManager({ pacienteId }) {
                   <TableCell>{new Date(p.fechaOtorgamiento).toLocaleDateString('es-VE')}</TableCell>
                   <TableCell>{new Date(p.expiracion).toLocaleDateString('es-VE')}</TableCell>
                   <TableCell>
-                    <Chip label={p.activo ? 'Activo' : 'Revocado'} size="small" color={p.activo ? 'success' : 'default'} />
+                    <Chip
+                      label={p.activo ? (new Date(p.expiracion) > new Date() ? 'Activo' : 'Expirado') : 'Revocado'}
+                      size="small"
+                      color={p.activo && new Date(p.expiracion) > new Date() ? 'success' : 'default'}
+                    />
                   </TableCell>
                   <TableCell align="center">
-                    {p.activo && (
+                    {p.activo && new Date(p.expiracion) > new Date() && (
                       <Tooltip title="Revocar acceso">
                         <IconButton size="small" color="error" onClick={() => handleRevocar(p.medicoId)}>
                           <BlockIcon />
@@ -97,6 +123,12 @@ export default function PermissionManager({ pacienteId }) {
             </TableBody>
           </Table>
         </TableContainer>
+      )}
+
+      {permisos.length === 0 && (
+        <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 2 }}>
+          No hay permisos registrados para este paciente.
+        </Typography>
       )}
     </Paper>
   );

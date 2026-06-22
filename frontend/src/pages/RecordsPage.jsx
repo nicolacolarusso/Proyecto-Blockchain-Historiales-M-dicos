@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Container, Typography, Button, Box, TextField, Paper, MenuItem,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
@@ -13,8 +13,11 @@ import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
 import CollectionsIcon from '@mui/icons-material/Collections';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import DeleteIcon from '@mui/icons-material/Delete';
+import CloseIcon from '@mui/icons-material/Close';
+import VisibilityIcon from '@mui/icons-material/Visibility';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { Divider, Grid, AppBar, Toolbar } from '@mui/material';
 
 const TIPOS_REGISTRO = [
   'consulta', 'emergencia', 'hospitalizacion', 'laboratorio', 'imagen'
@@ -45,8 +48,8 @@ export default function RecordsPage() {
     pacienteId: '', tipo: '', diagnostico: '', tratamiento: '', notas: ''
   });
 
-  // Estado para imagenes
-  const [imageDialog, setImageDialog] = useState(false);
+  // Estado para imagenes y detalle
+  const [detailDialog, setDetailDialog] = useState(false);
   const [imageUploadDialog, setImageUploadDialog] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState(null);
   const [imagenes, setImagenes] = useState([]);
@@ -56,9 +59,30 @@ export default function RecordsPage() {
   const [uploadCategoria, setUploadCategoria] = useState('general');
   const [uploadDescripcion, setUploadDescripcion] = useState('');
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [previewImage, setPreviewImage] = useState(null);
 
   const canCreate = user?.role === 'medico';
   const canUploadImages = ['medico', 'laboratorista', 'radiologo', 'admin'].includes(user?.role);
+  const isPaciente = user?.role === 'paciente';
+
+  // Si es paciente, cargar sus registros automaticamente
+  useEffect(() => {
+    if (isPaciente) {
+      (async () => {
+        try {
+          const meRes = await api.get('/patients/me');
+          const patientId = meRes.data.id;
+          setSearchId(patientId);
+          const res = await api.get(`/records/patient/${patientId}`);
+          setRecords(Array.isArray(res.data) ? res.data : [res.data]);
+          setSearched(true);
+        } catch (err) {
+          setError(err.response?.data?.error || 'Error al cargar tus registros');
+          setSearched(true);
+        }
+      })();
+    }
+  }, []);
 
   const handleSearch = async () => {
     if (!searchId) return;
@@ -109,12 +133,27 @@ export default function RecordsPage() {
 
   // ---- Funciones de imagenes ----
 
-  const handleViewImages = async (record) => {
+  const handleOpenDetail = async (record) => {
     setSelectedRecord(record);
-    setImageDialog(true);
+    setDetailDialog(true);
+    setVerifyResult(null);
+    setHistoryResult(null);
     setLoadingImages(true);
     try {
       const res = await api.get(`/images/record/${record.id}`);
+      setImagenes(res.data.imagenes || []);
+    } catch (err) {
+      setImagenes([]);
+    } finally {
+      setLoadingImages(false);
+    }
+  };
+
+  const refreshImages = async () => {
+    if (!selectedRecord) return;
+    setLoadingImages(true);
+    try {
+      const res = await api.get(`/images/record/${selectedRecord.id}`);
       setImagenes(res.data.imagenes || []);
     } catch (err) {
       setImagenes([]);
@@ -159,9 +198,9 @@ export default function RecordsPage() {
       setImageUploadDialog(false);
       setError('');
 
-      // Si el dialogo de imagenes esta abierto, refrescar
-      if (imageDialog) {
-        handleViewImages(selectedRecord);
+      // Si el dialogo de detalles esta abierto, refrescar
+      if (detailDialog) {
+        refreshImages();
       }
 
       alert(`${res.data.imagenesSubidas} imagen(es) subida(s) exitosamente a Firebase Storage`);
@@ -201,14 +240,16 @@ export default function RecordsPage() {
         )}
       </Box>
 
-      <Paper sx={{ p: 2, mb: 3, display: 'flex', gap: 2, alignItems: 'center' }}>
-        <TextField
-          label="ID del Paciente" size="small" value={searchId}
-          onChange={(e) => setSearchId(e.target.value)} sx={{ flexGrow: 1 }}
-          onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-        />
-        <Button variant="outlined" onClick={handleSearch}>Buscar</Button>
-      </Paper>
+      {!isPaciente && (
+        <Paper sx={{ p: 2, mb: 3, display: 'flex', gap: 2, alignItems: 'center' }}>
+          <TextField
+            label="ID del Paciente" size="small" value={searchId}
+            onChange={(e) => setSearchId(e.target.value)} sx={{ flexGrow: 1 }}
+            onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+          />
+          <Button variant="outlined" onClick={handleSearch}>Buscar</Button>
+        </Paper>
+      )}
 
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
 
@@ -230,12 +271,16 @@ export default function RecordsPage() {
             {paginated.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={8} align="center">
-                  {searched ? 'No se encontraron registros' : 'Busque por ID de paciente para ver registros'}
+                  {searched ? 'No se encontraron registros' : (isPaciente ? 'Cargando tus registros...' : 'Busque por ID de paciente para ver registros')}
                 </TableCell>
               </TableRow>
             ) : (
               paginated.map((r) => (
-                <TableRow key={r.id} hover>
+                <TableRow
+                  key={r.id} hover
+                  sx={{ cursor: 'pointer' }}
+                  onClick={() => handleOpenDetail(r)}
+                >
                   <TableCell><code style={{ fontSize: 11 }}>{r.id}</code></TableCell>
                   <TableCell><Chip label={r.tipo} size="small" color={tipoColor[r.tipo] || 'default'} /></TableCell>
                   <TableCell sx={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.diagnostico}</TableCell>
@@ -245,10 +290,10 @@ export default function RecordsPage() {
                   <TableCell>
                     <Chip label={r.enBlockchain ? 'Si' : 'No'} size="small" color={r.enBlockchain ? 'success' : 'default'} />
                   </TableCell>
-                  <TableCell align="center">
-                    <Tooltip title="Ver imagenes">
-                      <IconButton size="small" color="primary" onClick={() => handleViewImages(r)}>
-                        <CollectionsIcon />
+                  <TableCell align="center" onClick={(e) => e.stopPropagation()}>
+                    <Tooltip title="Ver detalle">
+                      <IconButton size="small" color="primary" onClick={() => handleOpenDetail(r)}>
+                        <VisibilityIcon />
                       </IconButton>
                     </Tooltip>
                     {canUploadImages && (
@@ -258,16 +303,6 @@ export default function RecordsPage() {
                         </IconButton>
                       </Tooltip>
                     )}
-                    <Tooltip title="Verificar integridad">
-                      <IconButton size="small" color="success" onClick={() => handleVerify(r.id)}>
-                        <VerifiedIcon />
-                      </IconButton>
-                    </Tooltip>
-                    <Tooltip title="Ver historial">
-                      <IconButton size="small" color="info" onClick={() => handleHistory(r.id)}>
-                        <HistoryIcon />
-                      </IconButton>
-                    </Tooltip>
                   </TableCell>
                 </TableRow>
               ))
@@ -285,59 +320,6 @@ export default function RecordsPage() {
         )}
       </TableContainer>
 
-      {/* Resultado de verificacion */}
-      {verifyResult && (
-        <Paper sx={{ p: 2, mt: 2 }}>
-          <Typography variant="h6" gutterBottom>Resultado de Verificacion</Typography>
-          {verifyResult.error ? (
-            <Alert severity="error">{verifyResult.error}</Alert>
-          ) : (
-            <Alert severity={verifyResult.integridadOk ? 'success' : 'error'}>
-              <strong>{verifyResult.integridadOk ? 'Integridad verificada' : 'INTEGRIDAD COMPROMETIDA'}</strong>
-              <br />Registro: {verifyResult.registroId}
-              <br />Hash almacenado: <code>{verifyResult.hashAlmacenado}</code>
-              <br />Hash calculado: <code>{verifyResult.hashCalculado}</code>
-              {verifyResult.fuente && <><br />Fuente: {verifyResult.fuente}</>}
-            </Alert>
-          )}
-        </Paper>
-      )}
-
-      {/* Resultado de historial */}
-      {historyResult && (
-        <Paper sx={{ p: 2, mt: 2 }}>
-          <Typography variant="h6" gutterBottom>Historial de Cambios</Typography>
-          {historyResult.error ? (
-            <Alert severity="error">{historyResult.error}</Alert>
-          ) : (
-            <>
-              {historyResult.fuente && (
-                <Chip label={`Fuente: ${historyResult.fuente}`} size="small" color={historyResult.fuente === 'blockchain' ? 'success' : 'default'} sx={{ mb: 1 }} />
-              )}
-              <TableContainer>
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>TX ID</TableCell>
-                      <TableCell>Timestamp</TableCell>
-                      <TableCell>Version</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {(historyResult.historial || []).map((h, i) => (
-                      <TableRow key={i}>
-                        <TableCell><code style={{ fontSize: 10 }}>{typeof h.txId === 'string' ? h.txId.slice(0, 16) + '...' : 'N/A'}</code></TableCell>
-                        <TableCell>{h.timestamp ? (typeof h.timestamp === 'object' ? new Date(h.timestamp.seconds * 1000).toLocaleString('es-VE') : new Date(h.timestamp).toLocaleString('es-VE')) : 'N/A'}</TableCell>
-                        <TableCell>{h.version || (i + 1)}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            </>
-          )}
-        </Paper>
-      )}
 
       {/* Dialog crear registro */}
       <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth>
@@ -360,90 +342,244 @@ export default function RecordsPage() {
         </DialogActions>
       </Dialog>
 
-      {/* Dialog ver imagenes de un registro */}
-      <Dialog open={imageDialog} onClose={() => setImageDialog(false)} maxWidth="md" fullWidth>
-        <DialogTitle>
-          Imagenes del Registro {selectedRecord?.id}
-          {canUploadImages && (
-            <Button size="small" startIcon={<CloudUploadIcon />} sx={{ ml: 2 }}
-              onClick={() => { setImageDialog(false); handleOpenUpload(selectedRecord); }}>
-              Subir
-            </Button>
-          )}
-        </DialogTitle>
-        <DialogContent>
-          {loadingImages ? (
-            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-              <CircularProgress />
-            </Box>
-          ) : imagenes.length === 0 ? (
-            <Alert severity="info">
-              Este registro no tiene imagenes adjuntas.
-              {canUploadImages && ' Puede subir imagenes con el boton "Subir".'}
-            </Alert>
-          ) : (
-            <>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                {imagenes.length} imagen(es) almacenada(s) en Firebase Storage
-              </Typography>
-              <ImageList cols={3} gap={12}>
-                {imagenes.map((img) => (
-                  <ImageListItem key={img.id} sx={{ border: '1px solid #ddd', borderRadius: 1, overflow: 'hidden' }}>
-                    {img.tipoMime?.startsWith('image/') ? (
-                      <img
-                        src={img.firebaseUrl}
-                        alt={img.nombreOriginal}
-                        loading="lazy"
-                        style={{ height: 200, objectFit: 'cover' }}
-                      />
-                    ) : (
-                      <Box sx={{ height: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: '#f5f5f5' }}>
-                        <Typography variant="body2" color="text.secondary">
-                          {img.tipoMime?.includes('pdf') ? 'PDF' : img.tipoMime?.split('/')[1]?.toUpperCase() || 'Archivo'}
-                        </Typography>
-                      </Box>
+      {/* Dialog detalle completo del registro */}
+      <Dialog open={detailDialog} onClose={() => setDetailDialog(false)} fullScreen>
+        <AppBar sx={{ position: 'relative' }} color="primary">
+          <Toolbar>
+            <IconButton edge="start" color="inherit" onClick={() => setDetailDialog(false)}>
+              <CloseIcon />
+            </IconButton>
+            <Typography sx={{ ml: 2, flex: 1 }} variant="h6">
+              Registro Medico {selectedRecord?.id}
+            </Typography>
+            {canUploadImages && selectedRecord && (
+              <Button color="inherit" startIcon={<CloudUploadIcon />}
+                onClick={() => handleOpenUpload(selectedRecord)}>
+                Subir Imagenes
+              </Button>
+            )}
+          </Toolbar>
+        </AppBar>
+        <DialogContent sx={{ bgcolor: '#f5f5f5', p: 3 }}>
+          {selectedRecord && (
+            <Grid container spacing={3}>
+              {/* Informacion principal */}
+              <Grid item xs={12} md={5}>
+                <Paper sx={{ p: 3 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                    <Chip label={selectedRecord.tipo} color={tipoColor[selectedRecord.tipo] || 'default'} />
+                    <Chip label={`v${selectedRecord.version}`} size="small" />
+                    <Chip label={selectedRecord.enBlockchain ? 'En Blockchain' : 'Local'} size="small"
+                      color={selectedRecord.enBlockchain ? 'success' : 'default'} />
+                  </Box>
+
+                  <Typography variant="overline" color="text.secondary">ID Registro</Typography>
+                  <Typography variant="body1" sx={{ fontFamily: 'monospace', mb: 2 }}>
+                    {selectedRecord.id}
+                  </Typography>
+
+                  <Typography variant="overline" color="text.secondary">ID Paciente</Typography>
+                  <Typography variant="body1" sx={{ fontFamily: 'monospace', mb: 2 }}>
+                    {selectedRecord.pacienteId}
+                  </Typography>
+
+                  <Typography variant="overline" color="text.secondary">Medico</Typography>
+                  <Typography variant="body1" sx={{ mb: 2 }}>
+                    {selectedRecord.medicoNombre || selectedRecord.medicoId}
+                  </Typography>
+
+                  <Typography variant="overline" color="text.secondary">Fecha Creacion</Typography>
+                  <Typography variant="body1" sx={{ mb: 2 }}>
+                    {selectedRecord.fechaCreacion
+                      ? new Date(selectedRecord.fechaCreacion).toLocaleString('es-VE')
+                      : '-'}
+                  </Typography>
+
+                  {selectedRecord.ultimaModificacion && (
+                    <>
+                      <Typography variant="overline" color="text.secondary">Ultima Modificacion</Typography>
+                      <Typography variant="body1" sx={{ mb: 2 }}>
+                        {new Date(selectedRecord.ultimaModificacion).toLocaleString('es-VE')}
+                      </Typography>
+                    </>
+                  )}
+
+                  <Divider sx={{ my: 2 }} />
+
+                  <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                    <Button size="small" variant="outlined" startIcon={<VerifiedIcon />}
+                      onClick={() => handleVerify(selectedRecord.id)}>
+                      Verificar Integridad
+                    </Button>
+                    <Button size="small" variant="outlined" startIcon={<HistoryIcon />}
+                      onClick={() => handleHistory(selectedRecord.id)}>
+                      Ver Historial
+                    </Button>
+                    <Button size="small" variant="outlined" color="secondary"
+                      onClick={() => window.open(`/traceability?entidad=registro&id=${selectedRecord.id}`, '_blank')}>
+                      Ver Trazabilidad
+                    </Button>
+                  </Box>
+
+                  {verifyResult && (
+                    <Alert severity={verifyResult.integridadOk ? 'success' : 'error'} sx={{ mt: 2 }}
+                      onClose={() => setVerifyResult(null)}>
+                      {verifyResult.error ? verifyResult.error : (
+                        <>
+                          <strong>{verifyResult.integridadOk ? 'Integridad OK' : 'Integridad COMPROMETIDA'}</strong>
+                          <Box sx={{ fontSize: 10, mt: 1, wordBreak: 'break-all' }}>
+                            Hash: {verifyResult.hashAlmacenado}
+                          </Box>
+                        </>
+                      )}
+                    </Alert>
+                  )}
+
+                  {historyResult && !historyResult.error && (
+                    <Box sx={{ mt: 2 }}>
+                      <Chip label={`Fuente: ${historyResult.fuente}`} size="small"
+                        color={historyResult.fuente === 'blockchain' ? 'success' : 'default'} />
+                      <Typography variant="body2" sx={{ mt: 1 }}>
+                        {(historyResult.historial || []).length} version(es) registrada(s)
+                      </Typography>
+                    </Box>
+                  )}
+                </Paper>
+              </Grid>
+
+              {/* Contenido clinico */}
+              <Grid item xs={12} md={7}>
+                <Paper sx={{ p: 3, mb: 2 }}>
+                  <Typography variant="h6" gutterBottom>Diagnostico</Typography>
+                  <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap' }}>
+                    {selectedRecord.diagnostico || '—'}
+                  </Typography>
+                </Paper>
+
+                {selectedRecord.tratamiento && (
+                  <Paper sx={{ p: 3, mb: 2 }}>
+                    <Typography variant="h6" gutterBottom>Tratamiento</Typography>
+                    <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap' }}>
+                      {selectedRecord.tratamiento}
+                    </Typography>
+                  </Paper>
+                )}
+
+                {selectedRecord.notas && (
+                  <Paper sx={{ p: 3, mb: 2 }}>
+                    <Typography variant="h6" gutterBottom>Notas</Typography>
+                    <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap' }}>
+                      {selectedRecord.notas}
+                    </Typography>
+                  </Paper>
+                )}
+              </Grid>
+
+              {/* Imagenes asociadas */}
+              <Grid item xs={12}>
+                <Paper sx={{ p: 3 }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                    <Typography variant="h6">
+                      Imagenes Asociadas {imagenes.length > 0 && `(${imagenes.length})`}
+                    </Typography>
+                    {canUploadImages && (
+                      <Button size="small" variant="contained" startIcon={<CloudUploadIcon />}
+                        onClick={() => handleOpenUpload(selectedRecord)}>
+                        Subir Imagenes
+                      </Button>
                     )}
-                    <ImageListItemBar
-                      title={img.nombreOriginal}
-                      subtitle={
-                        <span>
-                          {img.categoria} | {formatSize(img.tamanioBytes)} | {new Date(img.createdAt).toLocaleDateString('es-VE')}
-                        </span>
-                      }
-                      actionIcon={
-                        <Box sx={{ display: 'flex', gap: 0.5 }}>
-                          <Tooltip title="Verificar integridad">
-                            <IconButton size="small" sx={{ color: '#4ade80' }}
-                              onClick={async () => {
-                                try {
-                                  const res = await api.get(`/images/${img.id}/verify`);
-                                  alert(res.data.integridadOk
-                                    ? 'Integridad OK: la imagen no ha sido alterada'
-                                    : 'ALERTA: la imagen fue modificada');
-                                } catch (e) { alert('Error al verificar'); }
-                              }}>
-                              <VerifiedIcon fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                          {['medico', 'admin'].includes(user?.role) && (
-                            <Tooltip title="Eliminar">
-                              <IconButton size="small" sx={{ color: '#f87171' }} onClick={() => handleDeleteImage(img.id)}>
-                                <DeleteIcon fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
+                  </Box>
+
+                  {loadingImages ? (
+                    <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                      <CircularProgress />
+                    </Box>
+                  ) : imagenes.length === 0 ? (
+                    <Alert severity="info">
+                      Este registro no tiene imagenes adjuntas.
+                      {canUploadImages && ' Puede subir imagenes con el boton "Subir Imagenes".'}
+                    </Alert>
+                  ) : (
+                    <ImageList cols={4} gap={12} sx={{ maxHeight: 'none' }}>
+                      {imagenes.map((img) => (
+                        <ImageListItem key={img.id} sx={{ border: '1px solid #ddd', borderRadius: 1, overflow: 'hidden' }}>
+                          {img.tipoMime?.startsWith('image/') ? (
+                            <img
+                              src={img.firebaseUrl}
+                              alt={img.nombreOriginal}
+                              loading="lazy"
+                              style={{ height: 240, objectFit: 'cover', cursor: 'pointer' }}
+                              onClick={() => setPreviewImage(img)}
+                            />
+                          ) : (
+                            <Box sx={{ height: 240, display: 'flex', flexDirection: 'column',
+                              alignItems: 'center', justifyContent: 'center', bgcolor: '#f5f5f5', cursor: 'pointer' }}
+                              onClick={() => window.open(img.firebaseUrl, '_blank')}>
+                              <Typography variant="h4" color="text.secondary">
+                                {img.tipoMime?.includes('pdf') ? 'PDF' : img.tipoMime?.split('/')[1]?.toUpperCase() || 'ARCHIVO'}
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
+                                Click para abrir
+                              </Typography>
+                            </Box>
                           )}
-                        </Box>
-                      }
-                    />
-                  </ImageListItem>
-                ))}
-              </ImageList>
-            </>
+                          <ImageListItemBar
+                            title={img.nombreOriginal}
+                            subtitle={
+                              <span>
+                                {img.categoria} | {formatSize(img.tamanioBytes)} | {new Date(img.createdAt).toLocaleDateString('es-VE')}
+                              </span>
+                            }
+                            actionIcon={
+                              <Box sx={{ display: 'flex', gap: 0.5 }}>
+                                <Tooltip title="Verificar integridad">
+                                  <IconButton size="small" sx={{ color: '#4ade80' }}
+                                    onClick={async () => {
+                                      try {
+                                        const res = await api.get(`/images/${img.id}/verify`);
+                                        alert(res.data.integridadOk
+                                          ? 'Integridad OK: la imagen no ha sido alterada'
+                                          : 'ALERTA: la imagen fue modificada');
+                                      } catch (e) { alert('Error al verificar'); }
+                                    }}>
+                                    <VerifiedIcon fontSize="small" />
+                                  </IconButton>
+                                </Tooltip>
+                                {['medico', 'admin'].includes(user?.role) && (
+                                  <Tooltip title="Eliminar">
+                                    <IconButton size="small" sx={{ color: '#f87171' }} onClick={() => handleDeleteImage(img.id)}>
+                                      <DeleteIcon fontSize="small" />
+                                    </IconButton>
+                                  </Tooltip>
+                                )}
+                              </Box>
+                            }
+                          />
+                        </ImageListItem>
+                      ))}
+                    </ImageList>
+                  )}
+                </Paper>
+              </Grid>
+            </Grid>
           )}
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setImageDialog(false)}>Cerrar</Button>
-        </DialogActions>
+      </Dialog>
+
+      {/* Dialog preview de imagen en tamano completo */}
+      <Dialog open={!!previewImage} onClose={() => setPreviewImage(null)} maxWidth="lg" fullWidth>
+        <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          {previewImage?.nombreOriginal}
+          <IconButton onClick={() => setPreviewImage(null)}>
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent sx={{ textAlign: 'center', bgcolor: '#000' }}>
+          {previewImage && (
+            <img src={previewImage.firebaseUrl} alt={previewImage.nombreOriginal}
+              style={{ maxWidth: '100%', maxHeight: '80vh', objectFit: 'contain' }} />
+          )}
+        </DialogContent>
       </Dialog>
 
       {/* Dialog subir imagenes */}

@@ -25,11 +25,12 @@ export default function Navbar() {
   };
 
   const navItems = [
-    { label: 'Dashboard', path: '/', roles: null },
+    { label: 'Dashboard', path: '/', roles: ['admin', 'medico', 'paciente', 'administrativo', 'auditor', 'radiologo'] },
     { label: 'Pacientes', path: '/patients', roles: ['admin', 'medico', 'administrativo'] },
     { label: 'Registros', path: '/records', roles: ['admin', 'medico', 'paciente'] },
     { label: 'Permisos', path: '/permissions', roles: ['admin', 'paciente'] },
     { label: 'Auditoria', path: '/audit', roles: ['admin', 'auditor'] },
+    { label: 'Trazabilidad', path: '/traceability', roles: ['admin', 'auditor'] },
     { label: 'Resultados', path: '/results', roles: ['admin', 'medico', 'laboratorista', 'radiologo', 'paciente'] },
     { label: 'Recetas', path: '/prescriptions', roles: ['admin', 'medico', 'paciente', 'farmacia'] },
     { label: 'Usuarios', path: '/admin/users', roles: ['admin'] },

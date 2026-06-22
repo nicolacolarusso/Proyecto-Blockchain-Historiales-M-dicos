@@ -9,6 +9,7 @@ router.get('/patient/:pacienteId', auth, recordController.consultarPorPaciente);
 router.put('/:id/update', auth, role(['medico']), recordUpdateRules, validate, recordController.actualizar);
 router.get('/:id/history', auth, recordController.auditoria);
 router.get('/:id/verify', auth, recordController.verificarIntegridad);
+router.get('/share/:pacienteId', auth, recordController.listarPermisos);
 router.post('/share', auth, role(['paciente', 'admin']), shareRules, validate, recordController.compartir);
 router.delete('/share', auth, role(['paciente', 'admin']), recordController.revocarAcceso);
 

@@ -25,12 +25,23 @@ const registerRules = [
     .isLength({ min: 3, max: 50 }).withMessage('Username debe tener entre 3 y 50 caracteres')
     .matches(/^[a-zA-Z0-9_-]+$/).withMessage('Username solo puede contener letras, numeros, _ y -'),
   body('password').notEmpty().withMessage('Password es requerido')
-    .isLength({ min: 6 }).withMessage('Password debe tener minimo 6 caracteres'),
+    .isLength({ min: 6 }).withMessage('Password debe tener minimo 6 caracteres')
+    .custom((value) => {
+      const letras = (value.match(/[a-zA-Z]/g) || []).length;
+      const numeros = (value.match(/[0-9]/g) || []).length;
+      if (letras < 3 || numeros < 3) {
+        throw new Error('Password debe contener al menos 3 letras y 3 numeros');
+      }
+      return true;
+    }),
   body('role').trim().notEmpty().withMessage('Rol es requerido')
     .isIn(['medico', 'paciente', 'administrativo', 'auditor', 'laboratorista', 'radiologo', 'farmacia'])
     .withMessage('Rol invalido'),
   body('nombre').trim().notEmpty().withMessage('Nombre es requerido')
     .isLength({ min: 2, max: 100 }).withMessage('Nombre debe tener entre 2 y 100 caracteres')
+    .matches(/^[a-zA-ZaeiouAEIOUnNuU\s]+$/).withMessage('Nombre solo puede contener letras y espacios'),
+  body('cedula').optional().matches(/^[VE]-\d{6,9}$/).withMessage('Cedula debe tener formato V-XXXXXXXX o E-XXXXXXXX'),
+  body('telefono').optional({ checkFalsy: true }).matches(/^0\d{10}$/).withMessage('Telefono debe tener 11 digitos y comenzar con 0')
 ];
 
 const revokeRules = [

@@ -2,6 +2,7 @@ const { v4: uuidv4 } = require('uuid');
 const logger = require('../config/logger');
 const blockchainService = require('../services/blockchainService');
 const { Patient, AuditLog } = require('../models');
+const authController = require('./authController');
 
 // Cache en memoria para queries rapidas
 const patients = new Map();
@@ -87,6 +88,41 @@ const patientController = {
       res.status(201).json(paciente);
     } catch (err) {
       logger.error('Error registrando paciente:', err);
+      res.status(500).json({ error: err.message });
+    }
+  },
+
+  async miPerfil(req, res) {
+    try {
+      // Obtener la cedula del usuario desde el mapa de usuarios
+      const users = authController.getUsers();
+      const userData = users.get(req.user.username);
+      const userCedula = userData?.cedula;
+
+      if (!userCedula) {
+        return res.status(404).json({ error: 'Tu usuario no tiene cedula registrada' });
+      }
+
+      // Buscar paciente por cedula en cache
+      for (const [id, p] of patients) {
+        if (p.cedula === userCedula) {
+          return res.json(p);
+        }
+      }
+
+      // Buscar en DB por cedula
+      try {
+        const dbPac = await Patient.findOne({ where: { cedula: userCedula, activo: true } });
+        if (dbPac) {
+          const paciente = dbPac.toJSON();
+          patients.set(paciente.id, paciente);
+          return res.json(paciente);
+        }
+      } catch (e) { logger.warn(`DB miPerfil: ${e.message}`); }
+
+      return res.status(404).json({ error: 'No se encontro ficha de paciente asociada a tu usuario' });
+    } catch (err) {
+      logger.error('Error en miPerfil:', err);
       res.status(500).json({ error: err.message });
     }
   },

@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const logger = require('../config/logger');
 const blockchainService = require('../services/blockchainService');
 const { Prescription, AuditLog } = require('../models');
+const recordController = require('./recordController');
 
 const prescriptions = new Map();
 
@@ -84,6 +85,19 @@ const prescriptionController = {
   async consultarPorPaciente(req, res) {
     try {
       const { pacienteId } = req.params;
+
+      // Verificar permiso de acceso
+      if (!recordController.tienePermiso(pacienteId, req)) {
+        let tieneRecetas = false;
+        for (const [, r] of prescriptions) {
+          if (r.pacienteId === pacienteId) { tieneRecetas = true; break; }
+        }
+        if (tieneRecetas) {
+          return res.status(403).json({ error: 'No tiene permiso para ver las recetas de este paciente. El paciente debe otorgarle acceso desde la seccion de Permisos.' });
+        }
+        return res.status(403).json({ error: 'No tiene permiso para ver las recetas de este paciente.' });
+      }
+
       const recetas = [];
       for (const [, r] of prescriptions) {
         if (r.pacienteId === pacienteId) {

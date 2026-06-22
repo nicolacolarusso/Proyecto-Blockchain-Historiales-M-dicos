@@ -1,21 +1,36 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Container, Typography, Box, TextField, Button, Paper, Alert } from '@mui/material';
 import PermissionManager from '../components/access/PermissionManager';
 import { useAuth } from '../context/AuthContext';
+import api from '../services/api';
 
 export default function PermissionsPage() {
   const { user } = useAuth();
   const [pacienteId, setPacienteId] = useState('');
   const [activePacienteId, setActivePacienteId] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  // Si el usuario es paciente, buscar con su propia identidad
   const isPaciente = user?.role === 'paciente';
 
-  const handleSearch = () => {
+  // Si es paciente, cargar su ID automaticamente
+  useEffect(() => {
     if (isPaciente) {
-      // El paciente gestiona sus propios permisos
-      setActivePacienteId(user.username);
-    } else if (pacienteId) {
+      (async () => {
+        setLoading(true);
+        try {
+          const meRes = await api.get('/patients/me');
+          setActivePacienteId(meRes.data.id);
+        } catch (err) {
+          console.error('Error al cargar perfil de paciente:', err);
+        } finally {
+          setLoading(false);
+        }
+      })();
+    }
+  }, []);
+
+  const handleSearch = () => {
+    if (pacienteId) {
       setActivePacienteId(pacienteId);
     }
   };
@@ -36,18 +51,17 @@ export default function PermissionsPage() {
             size="small"
             value={pacienteId}
             onChange={(e) => setPacienteId(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
             sx={{ flexGrow: 1 }}
           />
           <Button variant="outlined" onClick={handleSearch}>Cargar Permisos</Button>
         </Paper>
       )}
 
-      {isPaciente && !activePacienteId && (
-        <Box sx={{ textAlign: 'center', mt: 4 }}>
-          <Button variant="contained" size="large" onClick={handleSearch}>
-            Ver Mis Permisos
-          </Button>
-        </Box>
+      {isPaciente && loading && (
+        <Typography color="text.secondary" sx={{ textAlign: 'center', mt: 4 }}>
+          Cargando tus permisos...
+        </Typography>
       )}
 
       {activePacienteId && (

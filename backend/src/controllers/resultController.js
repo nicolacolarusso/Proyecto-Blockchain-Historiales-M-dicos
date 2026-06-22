@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const logger = require('../config/logger');
 const blockchainService = require('../services/blockchainService');
 const { Result, AuditLog } = require('../models');
+const recordController = require('./recordController');
 
 const results = new Map();
 
@@ -82,6 +83,19 @@ const resultController = {
   async consultarPorPaciente(req, res) {
     try {
       const { pacienteId } = req.params;
+
+      // Verificar permiso de acceso
+      if (!recordController.tienePermiso(pacienteId, req)) {
+        let tieneResultados = false;
+        for (const [, r] of results) {
+          if (r.pacienteId === pacienteId) { tieneResultados = true; break; }
+        }
+        if (tieneResultados) {
+          return res.status(403).json({ error: 'No tiene permiso para ver los resultados de este paciente. El paciente debe otorgarle acceso desde la seccion de Permisos.' });
+        }
+        return res.status(403).json({ error: 'No tiene permiso para ver los resultados de este paciente.' });
+      }
+
       const resultados = [];
       for (const [, r] of results) {
         if (r.pacienteId === pacienteId) {

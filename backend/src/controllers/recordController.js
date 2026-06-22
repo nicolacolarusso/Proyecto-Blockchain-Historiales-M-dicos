@@ -12,6 +12,21 @@ const recordController = {
   getRecords() { return records; },
   getPermissions() { return permissions; },
 
+  // Verificar si un usuario tiene permiso para ver datos de un paciente
+  tienePermiso(pacienteId, req) {
+    const { role, username } = req.user;
+    // Admin siempre tiene acceso
+    if (role === 'admin') return true;
+    // El paciente accede a sus propios datos (validado por el frontend via /patients/me)
+    if (role === 'paciente') return true;
+    // Para otros roles: verificar permiso activo y no expirado
+    const permisoKey = `${pacienteId}_${username}`;
+    const permiso = permissions.get(permisoKey);
+    if (!permiso || !permiso.activo) return false;
+    if (new Date(permiso.expiracion) < new Date()) return false;
+    return true;
+  },
+
   async loadFromDB() {
     try {
       const dbRecords = await MedicalRecord.findAll();
@@ -90,12 +105,34 @@ const recordController = {
     try {
       const { pacienteId } = req.params;
 
+      // Verificar permiso de acceso
+      if (!recordController.tienePermiso(pacienteId, req)) {
+        // Verificar si el paciente tiene registros para dar mensaje especifico
+        let tieneRegistros = false;
+        for (const [, reg] of records) {
+          if (reg.pacienteId === pacienteId) { tieneRegistros = true; break; }
+        }
+        if (tieneRegistros) {
+          return res.status(403).json({ error: 'No tiene permiso para ver los registros de este paciente. El paciente debe otorgarle acceso desde la seccion de Permisos.' });
+        }
+        return res.status(403).json({ error: 'No tiene permiso para ver los registros de este paciente.' });
+      }
+
       const registros = [];
       for (const [, reg] of records) {
         if (reg.pacienteId === pacienteId) {
           registros.push(reg);
         }
       }
+
+      // Auditoria de consulta
+      try {
+        await AuditLog.create({
+          accion: 'CONSULTAR', entidad: 'registro', entidadId: pacienteId,
+          usuarioId: req.user.username, usuarioRole: req.user.role,
+          detalles: { pacienteId, totalRegistros: registros.length }, ip: req.ip
+        });
+      } catch (e) { /* audit no critico */ }
 
       res.json(registros);
     } catch (err) {
@@ -214,6 +251,22 @@ const recordController = {
     }
   },
 
+  async listarPermisos(req, res) {
+    try {
+      const { pacienteId } = req.params;
+      const lista = [];
+      for (const [, p] of permissions) {
+        if (p.pacienteId === pacienteId) {
+          lista.push(p);
+        }
+      }
+      res.json(lista);
+    } catch (err) {
+      logger.error('Error listando permisos:', err);
+      res.status(500).json({ error: err.message });
+    }
+  },
+
   async compartir(req, res) {
     try {
       const { pacienteId, medicoId, duracionDias } = req.body;
@@ -227,6 +280,7 @@ const recordController = {
       expiracion.setDate(expiracion.getDate() + (duracionDias || 30));
 
       const permiso = {
+        id: uuidv4(),
         pacienteId,
         medicoId,
         otorgadoPor: req.user.username,

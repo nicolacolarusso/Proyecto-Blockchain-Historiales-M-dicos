@@ -275,6 +275,121 @@ const authController = {
       logger.error('Error en revokeUser:', err);
       res.status(500).json({ error: err.message });
     }
+  },
+
+  // Listar todos los usuarios activos (admin)
+  async listUsers(req, res) {
+    try {
+      const lista = [];
+      for (const [, u] of users) {
+        const { passwordHash, ...safe } = u;
+        lista.push(safe);
+      }
+      // Ordenar por rol y luego por nombre
+      lista.sort((a, b) => {
+        if (a.role !== b.role) return a.role.localeCompare(b.role);
+        return (a.nombre || '').localeCompare(b.nombre || '');
+      });
+      res.json(lista);
+    } catch (err) {
+      logger.error('Error listando usuarios:', err);
+      res.status(500).json({ error: err.message });
+    }
+  },
+
+  // Eliminar usuario (admin) - remueve del cache, DB y Fabric CA
+  async deleteUser(req, res) {
+    try {
+      const { username } = req.params;
+
+      if (!username) {
+        return res.status(400).json({ error: 'Username requerido' });
+      }
+
+      // No permitir eliminar al admin principal
+      if (username === 'admin') {
+        return res.status(403).json({ error: 'No se puede eliminar al administrador principal' });
+      }
+
+      // No permitir que un usuario se elimine a si mismo
+      if (username === req.user.username) {
+        return res.status(403).json({ error: 'No puede eliminar su propia cuenta' });
+      }
+
+      if (!users.has(username)) {
+        return res.status(404).json({ error: 'Usuario no encontrado' });
+      }
+
+      try {
+        await fabricCAService.revocarUsuario(username, 'cessationofoperation');
+      } catch (fabricErr) {
+        logger.warn(`Fabric CA revocacion fallida: ${fabricErr.message}`);
+      }
+
+      users.delete(username);
+      try { await User.destroy({ where: { username } }); } catch (e) { logger.warn(`DB delete user: ${e.message}`); }
+
+      try {
+        await AuditLog.create({
+          accion: 'ELIMINAR', entidad: 'usuario', entidadId: username,
+          usuarioId: req.user.username, usuarioRole: req.user.role,
+          detalles: { eliminado: username }, ip: req.ip
+        });
+      } catch (e) { /* audit no critico */ }
+
+      logger.info(`Usuario eliminado: ${username} por ${req.user.username}`);
+      res.json({ message: `Usuario ${username} eliminado exitosamente` });
+    } catch (err) {
+      logger.error('Error eliminando usuario:', err);
+      res.status(500).json({ error: err.message });
+    }
+  },
+
+  // Recuperar/resetear contrasena (admin)
+  async resetPassword(req, res) {
+    try {
+      const { username } = req.params;
+      const { newPassword } = req.body;
+
+      if (!username) {
+        return res.status(400).json({ error: 'Username requerido' });
+      }
+      if (!newPassword) {
+        return res.status(400).json({ error: 'Nueva contrasena requerida' });
+      }
+
+      // Validar password (minimo 6, al menos 3 letras y 3 numeros)
+      const letras = (newPassword.match(/[a-zA-Z]/g) || []).length;
+      const numeros = (newPassword.match(/[0-9]/g) || []).length;
+      if (newPassword.length < 6 || letras < 3 || numeros < 3) {
+        return res.status(400).json({ error: 'La contrasena debe tener minimo 6 caracteres, al menos 3 letras y 3 numeros' });
+      }
+
+      const user = users.get(username);
+      if (!user) {
+        return res.status(404).json({ error: 'Usuario no encontrado' });
+      }
+
+      const passwordHash = await bcrypt.hash(newPassword, 10);
+      user.passwordHash = passwordHash;
+      users.set(username, user);
+
+      try { await User.update({ passwordHash }, { where: { username } }); } catch (e) { logger.warn(`DB update password: ${e.message}`); }
+
+      try {
+        await AuditLog.create({
+          accion: 'RESET_PASSWORD', entidad: 'usuario', entidadId: username,
+          usuarioId: req.user.username, usuarioRole: req.user.role,
+          detalles: { resetPara: username }, ip: req.ip
+        });
+      } catch (e) { /* audit no critico */ }
+
+      logger.info(`Contrasena reseteada para ${username} por ${req.user.username}`);
+      res.json({ message: `Contrasena de ${username} actualizada exitosamente` });
+    } catch (err) {
+      logger.error('Error reseteando contrasena:', err);
+      res.status(500).json({ error: err.message });
+    }
   }
 };
 

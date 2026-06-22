@@ -13,6 +13,7 @@ const recordRoutes = require('./routes/records');
 const resultRoutes = require('./routes/results');
 const prescriptionRoutes = require('./routes/prescriptions');
 const imageRoutes = require('./routes/images');
+const auditRoutes = require('./routes/audit');
 
 const authController = require('./controllers/authController');
 const patientController = require('./controllers/patientController');
@@ -87,6 +88,7 @@ app.use('/api/records', recordRoutes);
 app.use('/api/results', resultRoutes);
 app.use('/api/prescriptions', prescriptionRoutes);
 app.use('/api/images', imageRoutes);
+app.use('/api/audit', auditRoutes);
 
 // Stats endpoint para dashboards
 app.get('/api/stats', auth, (req, res) => {
